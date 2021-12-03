@@ -1,0 +1,100 @@
+### Bayesian Optimization
+
+import hyperopt
+from hyperopt.pyll.stochastic import sample
+from hyperopt import tpe, Trials, hp, STATUS_OK, fmin
+from timeit import default_timer as timer
+
+#### Hyper Space 
+
+list(np.arange(0.0, 0.1, 0.005,dtype=float))
+
+space = {
+    'n_estimators':
+    hp.choice('n_estimators', [50, 100, 150, 200, 250, 300, 350, 400]),
+    'criterion':
+    'gini',
+    'max_depth':
+    hp.choice('max_depth', [5, 8, 10, 15, 20]),
+    'min_samples_split':
+    hp.choice('min_samples_split', [0.6, 0.7, 0.8, 0.9]),
+    'min_samples_leaf':
+    hp.choice('min_samples_leaf', [0.015, 0.025, 0.075]),
+    'max_features':
+    hp.choice('max_features', ['sqrt', 'log2']),
+    'bootstrap':
+    hp.choice('bootstrap', [False]),
+    'oob_score':
+    False,
+    'n_jobs':
+    -1,
+    'random_state':
+    9,
+    'verbose':
+    1,
+    'warm_start':
+    hp.choice('warm_start', [True, False])
+}
+
+sample(space)
+
+#### Objective 
+
+def objective(params, n_folds=10):
+    global ITERATION
+    ITERATION += 1
+    start = timer()
+    cv_result = cross_val_score(RandomForestClassifier(bootstrap=params['bootstrap'],
+                                                       criterion=params['criterion'],
+                                                       max_depth=params['max_depth'],
+                                                       max_features=params['max_features'],
+                                                       min_samples_leaf=params['min_samples_leaf'],
+                                                       min_samples_split=params['min_samples_split'],
+                                                       n_estimators=params['n_estimators'],
+                                                       n_jobs=params['n_jobs'],
+                                                       oob_score=params['oob_score'],
+                                                       random_state=params['random_state'],
+                                                       verbose=params['verbose'],
+                                                       warm_start=params['warm_start'],
+                                                       class_weight={
+                                                           0: 0.4,
+                                                           1: 0.6
+    }),
+        X=np.array(train.drop(columns=['label', 'l_policy_id'])),
+        y=np.array(train_label),
+        scoring="f1",
+        cv=n_folds,
+        verbose=1,
+        n_jobs=-1)
+    run_time = timer() - start
+    best_score = np.mean(cv_result)
+    loss = 1 - best_score
+    n_estimators = int(np.argmax(cv_result) + 1)
+    return {
+        'best_score': best_score,
+        'loss': loss,
+        'params': params,
+        'iteration': ITERATION,
+        'best_cv': n_estimators,
+        'train_time': run_time,
+        'status': STATUS_OK
+    }
+
+#### Driver
+
+global ITERATION
+ITERATION = 0
+tpe_algorithm = tpe.suggest
+bayes_trials = Trials()
+best = fmin(fn=objective,
+            space=space,
+            algo=tpe.suggest,
+            max_evals=100,
+            trials=bayes_trials,
+            rstate=np.random.RandomState(9),
+            verbose=1)
+
+bayes_trials_results = sorted(bayes_trials.results, key = lambda x: x['loss'])
+bayes_trials_results[:1]
+
+pd.DataFrame(bayes_trials_results).plot.scatter(x='iteration',y='loss',figsize=(10,5))
